@@ -42,4 +42,19 @@ class AssetDao extends DatabaseAccessor<AppDatabase>
   Future<int> deleteAsset(int id) {
     return (delete(assets)..where((table) => table.id.equals(id))).go();
   }
+
+  Future<bool> updateFavorite(
+    int assetId,
+    bool isFavorite,
+  ) async {
+    final updatedRows = await (update(assets)
+          ..where((table) => table.id.equals(assetId)))
+        .write(
+      AssetsCompanion(
+        isFavorite: Value(isFavorite),
+      ),
+    );
+
+    return updatedRows > 0;
+  }
 }

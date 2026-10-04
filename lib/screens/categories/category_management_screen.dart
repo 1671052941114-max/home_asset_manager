@@ -10,6 +10,80 @@ class CategoryManagementScreen extends StatefulWidget {
   State<CategoryManagementScreen> createState() =>
       _CategoryManagementScreenState();
 }
+class _CategoryDialog extends StatefulWidget {
+  const _CategoryDialog({
+    required this.title,
+    required this.initialName,
+    required this.onCancel,
+  });
+
+  final String title;
+  final String initialName;
+  final VoidCallback onCancel;
+
+  @override
+  State<_CategoryDialog> createState() => _CategoryDialogState();
+}
+
+class _CategoryDialogState extends State<_CategoryDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = TextEditingController(
+      text: widget.initialName,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(
+      _controller.text.trim(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 50,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(
+          labelText: 'ชื่อหมวดหมู่',
+          hintText: 'เช่น เครื่องใช้ไฟฟ้า',
+          prefixIcon: Icon(Icons.category_outlined),
+        ),
+        onSubmitted: (_) {
+          _submit();
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: const Text('ยกเลิก'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(
+            widget.title.startsWith('แก้ไข')
+                ? 'บันทึก'
+                : 'เพิ่ม',
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _CategoryManagementScreenState
     extends State<CategoryManagementScreen> {
@@ -23,90 +97,64 @@ class _CategoryManagementScreenState
   }
 
   Future<void> _showCategoryDialog({
-    int? categoryId,
-    String? initialName,
-  }) async {
-    final controller = TextEditingController(
-      text: initialName ?? '',
-    );
+  int? categoryId,
+  String? initialName,
+}) async {
+  final isEditing = categoryId != null;
 
-    final isEditing = categoryId != null;
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(
-            isEditing ? 'แก้ไขหมวดหมู่' : 'เพิ่มหมวดหมู่',
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 50,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              labelText: 'ชื่อหมวดหมู่',
-              hintText: 'เช่น เครื่องใช้ไฟฟ้า',
-              prefixIcon: Icon(Icons.category_outlined),
-            ),
-            onSubmitted: (_) {
-              Navigator.of(dialogContext).pop(true);
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('ยกเลิก'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: Text(isEditing ? 'บันทึก' : 'เพิ่ม'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (result != true || !mounted) {
-      controller.dispose();
-      return;
-    }
-
-    final name = controller.text.trim();
-    controller.dispose();
-
-    if (name.isEmpty) {
-      _showMessage('กรุณาระบุชื่อหมวดหมู่');
-      return;
-    }
-
-    final provider = context.read<CategoryProvider>();
-
-    final success = isEditing
-        ? await provider.updateCategory(categoryId, name)
-        : await provider.addCategory(name);
-
-    if (!mounted) {
-      return;
-    }
-
-    if (success) {
-      _showMessage(
-        isEditing
-            ? 'แก้ไขหมวดหมู่เรียบร้อยแล้ว'
-            : 'เพิ่มหมวดหมู่เรียบร้อยแล้ว',
+  final name = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) {
+      return _CategoryDialog(
+        title: isEditing ? 'แก้ไขหมวดหมู่' : 'เพิ่มหมวดหมู่',
+        initialName: initialName ?? '',
+        onCancel: () {
+          Navigator.of(dialogContext).pop();
+        },
       );
-    } else {
-      _showMessage(
-        provider.errorMessage ?? 'ไม่สามารถบันทึกหมวดหมู่ได้',
-        isError: true,
-      );
-    }
+    },
+  );
+
+  if (!mounted || name == null) {
+    return;
   }
+
+  final trimmedName = name.trim();
+
+  if (trimmedName.isEmpty) {
+    _showMessage(
+      'กรุณาระบุชื่อหมวดหมู่',
+      isError: true,
+    );
+    return;
+  }
+
+  final provider = context.read<CategoryProvider>();
+
+  final bool success = isEditing
+      ? await provider.updateCategory(
+          categoryId,
+          trimmedName,
+        )
+      : await provider.addCategory(trimmedName);
+
+  if (!mounted) {
+    return;
+  }
+
+  if (success) {
+    _showMessage(
+      isEditing
+          ? 'แก้ไขหมวดหมู่เรียบร้อยแล้ว'
+          : 'เพิ่มหมวดหมู่เรียบร้อยแล้ว',
+    );
+  } else {
+    _showMessage(
+      provider.errorMessage ?? 'ไม่สามารถบันทึกหมวดหมู่ได้',
+      isError: true,
+    );
+  }
+}
 
   Future<void> _confirmDelete(
     int categoryId,

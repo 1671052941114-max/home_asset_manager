@@ -28,6 +28,9 @@ class Assets extends Table {
 
   TextColumn get imagePath => text().nullable()();
 
+  BoolColumn get isFavorite =>
+      boolean().withDefault(const Constant(false))();
+
   DateTimeColumn get createdAt => dateTime()();
 
   DateTimeColumn get updatedAt => dateTime()();

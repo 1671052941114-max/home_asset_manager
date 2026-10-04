@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../widgets/asset_card.dart';
+import '../qr/asset_qr_scanner_screen.dart';
 import '../../providers/asset_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/location_provider.dart';
+import '../../widgets/asset_card.dart';
 import 'asset_detail_screen.dart';
 import 'asset_form_screen.dart';
 
@@ -17,6 +18,8 @@ class AssetListScreen extends StatefulWidget {
 
 class _AssetListScreenState extends State<AssetListScreen> {
   final _searchController = TextEditingController();
+
+  bool _showFavoritesOnly = false;
 
   @override
   void initState() {
@@ -37,6 +40,15 @@ class _AssetListScreenState extends State<AssetListScreen> {
 
   void _onSearchChanged(String value) {
     context.read<AssetProvider>().setSearchQuery(value);
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _showFavoritesOnly = false;
+    });
+
+    _searchController.clear();
+    context.read<AssetProvider>().clearFilters();
   }
 
   Future<void> _showFilterSheet() async {
@@ -226,7 +238,13 @@ class _AssetListScreenState extends State<AssetListScreen> {
                           child: OutlinedButton(
                             onPressed: () {
                               assetProvider.clearFilters();
+
+                              setState(() {
+                                _showFavoritesOnly = false;
+                              });
+
                               _searchController.clear();
+
                               Navigator.of(sheetContext).pop();
                             },
                             child: const Text('รีเซ็ต'),
@@ -359,35 +377,39 @@ class _AssetListScreenState extends State<AssetListScreen> {
 
     await context.read<AssetProvider>().loadAssets();
   }
-String _getCategoryName(
-  BuildContext context,
-  int categoryId,
-) {
-  final categories = context.read<CategoryProvider>().categories;
 
-  for (final category in categories) {
-    if (category.id == categoryId) {
-      return category.name;
+  String _getCategoryName(
+    BuildContext context,
+    int categoryId,
+  ) {
+    final categories =
+        context.read<CategoryProvider>().categories;
+
+    for (final category in categories) {
+      if (category.id == categoryId) {
+        return category.name;
+      }
     }
+
+    return 'ไม่ระบุ';
   }
 
-  return 'ไม่ระบุ';
-}
+  String _getLocationName(
+    BuildContext context,
+    int locationId,
+  ) {
+    final locations =
+        context.read<LocationProvider>().locations;
 
-String _getLocationName(
-  BuildContext context,
-  int locationId,
-) {
-  final locations = context.read<LocationProvider>().locations;
-
-  for (final location in locations) {
-    if (location.id == locationId) {
-      return location.name;
+    for (final location in locations) {
+      if (location.id == locationId) {
+        return location.name;
+      }
     }
+
+    return 'ไม่ระบุ';
   }
 
-  return 'ไม่ระบุ';
-}
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -403,7 +425,21 @@ String _getLocationName(
             tooltip: 'ตัวกรอง',
             onPressed: _showFilterSheet,
             icon: const Icon(Icons.filter_list),
+            
           ),
+          IconButton(
+  tooltip: 'สแกน QR',
+  onPressed: () {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const AssetQrScannerScreen(),
+      ),
+    );
+  },
+  icon: const Icon(
+    Icons.qr_code_scanner_outlined,
+  ),
+),
         ],
       ),
       body: Consumer<AssetProvider>(
@@ -422,7 +458,12 @@ String _getLocationName(
             );
           }
 
-          final filteredAssets = provider.filteredAssets;
+          final filteredAssets = _showFavoritesOnly
+              ? provider.filteredAssets
+                  .where((asset) => asset.isFavorite)
+                  .toList()
+              : provider.filteredAssets;
+
           final hasAssets = provider.assets.isNotEmpty;
 
           return Column(
@@ -430,7 +471,7 @@ String _getLocationName(
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                   16,
-                  8,
+                  16,
                   16,
                   8,
                 ),
@@ -459,9 +500,45 @@ String _getLocationName(
                 ),
               ),
 
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  8,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: false,
+                        icon: Icon(
+                          Icons.inventory_2_outlined,
+                        ),
+                        label: Text('ทั้งหมด'),
+                      ),
+                      ButtonSegment<bool>(
+                        value: true,
+                        icon: Icon(Icons.star),
+                        label: Text('รายการโปรด'),
+                      ),
+                    ],
+                    selected: <bool>{_showFavoritesOnly},
+                    onSelectionChanged: (selection) {
+                      setState(() {
+                        _showFavoritesOnly = selection.first;
+                      });
+                    },
+                  ),
+                ),
+              ),
+
               if (_hasActiveFilters(provider))
                 _ActiveFilterBar(
                   provider: provider,
+                  showFavoritesOnly: _showFavoritesOnly,
+                  onClear: _clearAllFilters,
                 ),
 
               Expanded(
@@ -494,17 +571,23 @@ String _getLocationName(
                             final asset = filteredAssets[index];
 
                             return AssetCard(
-  asset: asset,
-  categoryName: _getCategoryName(
-    context,
-    asset.categoryId,
-  ),
-  locationName: _getLocationName(
-    context,
-    asset.locationId,
-  ),
-  onTap: () => _openAssetDetail(asset.id),
-);
+                              asset: asset,
+                              categoryName: _getCategoryName(
+                                context,
+                                asset.categoryId,
+                              ),
+                              locationName: _getLocationName(
+                                context,
+                                asset.locationId,
+                              ),
+                              onTap: () =>
+                                  _openAssetDetail(asset.id),
+                              onFavoriteTap: () {
+                                context
+                                    .read<AssetProvider>()
+                                    .toggleFavorite(asset.id);
+                              },
+                            );
                           },
                         ),
                 ),
@@ -522,7 +605,8 @@ String _getLocationName(
   }
 
   bool _hasActiveFilters(AssetProvider provider) {
-    return provider.categoryId != null ||
+    return _showFavoritesOnly ||
+        provider.categoryId != null ||
         provider.locationId != null ||
         provider.condition != null ||
         provider.warrantyStatus != null ||
@@ -561,13 +645,21 @@ class _SortOption extends StatelessWidget {
 class _ActiveFilterBar extends StatelessWidget {
   const _ActiveFilterBar({
     required this.provider,
+    required this.showFavoritesOnly,
+    required this.onClear,
   });
 
   final AssetProvider provider;
+  final bool showFavoritesOnly;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final filters = <String>[];
+
+    if (showFavoritesOnly) {
+      filters.add('รายการโปรด');
+    }
 
     if (provider.categoryId != null) {
       filters.add('หมวดหมู่');
@@ -609,7 +701,7 @@ class _ActiveFilterBar extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: provider.clearFilters,
+            onPressed: onClear,
             child: const Text('ล้าง'),
           ),
         ],

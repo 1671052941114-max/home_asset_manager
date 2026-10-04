@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
+import '../services/notification_service.dart';
 import '../data/database/app_database.dart';
 import '../repositories/asset_repository.dart';
+import '../core/utils/warranty_utils.dart';
 
 class AssetProvider extends ChangeNotifier {
   AssetProvider(this._repository);
@@ -39,6 +41,18 @@ class AssetProvider extends ChangeNotifier {
 
   String get sortType => _sortType;
 
+  /// รายการทรัพย์สินที่ถูกเพิ่มเป็นรายการโปรด
+  List<Asset> get favoriteAssets {
+    return List.unmodifiable(
+      _assets.where((asset) => asset.isFavorite),
+    );
+  }
+
+  /// จำนวนทรัพย์สินที่เป็นรายการโปรด
+  int get favoriteCount {
+    return _assets.where((asset) => asset.isFavorite).length;
+  }
+
   Future<void> loadAssets() async {
     _setLoading(true);
 
@@ -53,24 +67,27 @@ class AssetProvider extends ChangeNotifier {
     }
   }
 
-  Future<Asset?> getAssetById(int id) async {
-    try {
-      return await _repository.getAssetById(id);
-    } catch (error) {
-      debugPrint('AssetProvider.getAssetById: $error');
-      return null;
-    }
-  }
-
   Future<bool> addAsset(AssetsCompanion asset) async {
     _setLoading(true);
 
     try {
       _errorMessage = null;
 
-      await _repository.insertAsset(asset);
+      final assetId = await _repository.insertAsset(asset);
 
       _assets = await _repository.getAllAssets();
+
+      // ตั้งแจ้งเตือนการรับประกันหลังจากเพิ่มทรัพย์สินสำเร็จ
+      final createdAsset = await _repository.getAssetById(assetId);
+
+      if (createdAsset != null &&
+          createdAsset.warrantyEndDate != null) {
+        await NotificationService.instance.scheduleWarrantyNotifications(
+          assetId: createdAsset.id,
+          assetName: createdAsset.name,
+          warrantyEndDate: createdAsset.warrantyEndDate!,
+        );
+      }
 
       return true;
     } catch (error) {
@@ -97,6 +114,23 @@ class AssetProvider extends ChangeNotifier {
 
       _assets = await _repository.getAllAssets();
 
+      // ใช้ข้อมูลล่าสุดหลังแก้ไข เพื่อจัดการแจ้งเตือนใหม่
+      final updatedAsset = await _repository.getAssetById(asset.id.value);
+
+      if (updatedAsset != null) {
+        await NotificationService.instance
+            .cancelWarrantyNotifications(updatedAsset.id);
+
+        if (updatedAsset.warrantyEndDate != null) {
+          await NotificationService.instance
+              .scheduleWarrantyNotifications(
+            assetId: updatedAsset.id,
+            assetName: updatedAsset.name,
+            warrantyEndDate: updatedAsset.warrantyEndDate!,
+          );
+        }
+      }
+
       return true;
     } catch (error) {
       _errorMessage = _getAssetError(error);
@@ -105,6 +139,10 @@ class AssetProvider extends ChangeNotifier {
     } finally {
       _setLoading(false);
     }
+  }
+
+  Future<Asset?> getAssetById(int id) {
+    return _repository.getAssetById(id);
   }
 
   Future<bool> deleteAsset(int id) async {
@@ -120,6 +158,10 @@ class AssetProvider extends ChangeNotifier {
         return false;
       }
 
+      // ยกเลิกแจ้งเตือนของทรัพย์สินที่ถูกลบ
+      await NotificationService.instance
+          .cancelWarrantyNotifications(id);
+
       _assets = await _repository.getAllAssets();
 
       return true;
@@ -129,6 +171,66 @@ class AssetProvider extends ChangeNotifier {
       return false;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  List<Asset> get expiringWarrantyAssets {
+    final assets = _assets.where((asset) {
+      return WarrantyUtils.isExpiringSoon(
+        asset.warrantyEndDate,
+      );
+    }).toList();
+
+    assets.sort((a, b) {
+      final aDays = WarrantyUtils.getRemainingDays(
+        a.warrantyEndDate,
+      )!;
+      final bDays = WarrantyUtils.getRemainingDays(
+        b.warrantyEndDate,
+      )!;
+
+      return aDays.compareTo(bDays);
+    });
+
+    return List.unmodifiable(assets);
+  }
+
+  /// สลับสถานะรายการโปรดของทรัพย์สิน
+  Future<bool> toggleFavorite(int assetId) async {
+    try {
+      _errorMessage = null;
+
+      final asset = await _repository.getAssetById(assetId);
+
+      if (asset == null) {
+        _errorMessage = 'ไม่พบทรัพย์สินที่ต้องการแก้ไข';
+        notifyListeners();
+        return false;
+      }
+
+      final newFavoriteStatus = !asset.isFavorite;
+
+      final updated = await _repository.updateFavorite(
+        assetId,
+        newFavoriteStatus,
+      );
+
+      if (!updated) {
+        _errorMessage = 'ไม่สามารถเปลี่ยนสถานะรายการโปรดได้';
+        notifyListeners();
+        return false;
+      }
+
+      _assets = await _repository.getAllAssets();
+
+      notifyListeners();
+
+      return true;
+    } catch (error) {
+      _errorMessage = 'ไม่สามารถเปลี่ยนสถานะรายการโปรดได้';
+      debugPrint('AssetProvider.toggleFavorite: $error');
+      notifyListeners();
+      return false;
     }
   }
 
@@ -179,7 +281,8 @@ class AssetProvider extends ChangeNotifier {
     if (_searchQuery.isNotEmpty) {
       result = result.where((asset) {
         final name = asset.name.toLowerCase();
-        final description = asset.description?.toLowerCase() ?? '';
+        final description =
+            asset.description?.toLowerCase() ?? '';
         final serialNumber =
             asset.serialNumber?.toLowerCase() ?? '';
 
@@ -209,7 +312,10 @@ class AssetProvider extends ChangeNotifier {
 
     if (_warrantyStatus != null) {
       result = result
-          .where((asset) => _getWarrantyStatus(asset) == _warrantyStatus)
+          .where(
+            (asset) =>
+                _getWarrantyStatus(asset) == _warrantyStatus,
+          )
           .toList();
     }
 
@@ -236,11 +342,7 @@ class AssetProvider extends ChangeNotifier {
   }
 
   int get expiringWarrantyCount {
-    return _assets
-        .where(
-          (asset) => _getWarrantyStatus(asset) == 'expiringSoon',
-        )
-        .length;
+    return expiringWarrantyAssets.length;
   }
 
   int get expiredWarrantyCount {
@@ -288,12 +390,16 @@ class AssetProvider extends ChangeNotifier {
 
       case 'price_desc':
         assets.sort(
-          (a, b) => b.purchasePrice.compareTo(a.purchasePrice),
+          (a, b) => b.purchasePrice.compareTo(
+            a.purchasePrice,
+          ),
         );
 
       case 'price_asc':
         assets.sort(
-          (a, b) => a.purchasePrice.compareTo(b.purchasePrice),
+          (a, b) => a.purchasePrice.compareTo(
+            b.purchasePrice,
+          ),
         );
 
       case 'purchase_newest':
@@ -314,12 +420,17 @@ class AssetProvider extends ChangeNotifier {
 
       case 'created_desc':
         assets.sort(
-          (a, b) => b.createdAt.compareTo(a.createdAt),
+          (a, b) => b.createdAt.compareTo(
+            a.createdAt,
+          ),
         );
     }
   }
 
-  int _compareDates(DateTime? a, DateTime? b) {
+  int _compareDates(
+    DateTime? a,
+    DateTime? b,
+  ) {
     if (a == null && b == null) {
       return 0;
     }

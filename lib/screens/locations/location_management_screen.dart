@@ -26,68 +26,45 @@ class _LocationManagementScreenState
     int? locationId,
     String? currentName,
   }) async {
-    final controller = TextEditingController(text: currentName ?? '');
+    final isEditing = locationId != null;
 
-    final result = await showDialog<bool>(
+    final name = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
-        final isEditing = locationId != null;
-
-        return AlertDialog(
-          title: Text(
-            isEditing ? 'แก้ไขสถานที่' : 'เพิ่มสถานที่',
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              labelText: 'ชื่อสถานที่',
-              hintText: 'เช่น ห้องนอน, ห้องนั่งเล่น',
-              prefixIcon: Icon(Icons.location_on_outlined),
-            ),
-            onSubmitted: (_) {
-              Navigator.of(dialogContext).pop(true);
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('ยกเลิก'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: Text(
-                isEditing ? 'บันทึก' : 'เพิ่ม',
-              ),
-            ),
-          ],
+        return _LocationDialog(
+          title: isEditing ? 'แก้ไขสถานที่' : 'เพิ่มสถานที่',
+          initialName: currentName ?? '',
+          onCancel: () {
+            Navigator.of(dialogContext).pop();
+          },
         );
       },
     );
 
-    if (result != true || !mounted) {
-      controller.dispose();
+    if (!mounted || name == null) {
       return;
     }
 
-    final name = controller.text.trim();
-    controller.dispose();
+    final trimmedName = name.trim();
 
-    if (name.isEmpty) {
-      _showMessage('กรุณาระบุชื่อสถานที่');
+    if (trimmedName.isEmpty) {
+      _showMessage(
+        'กรุณาระบุชื่อสถานที่',
+        isError: true,
+      );
       return;
     }
 
     final provider = context.read<LocationProvider>();
 
-    final success = locationId == null
-        ? await provider.addLocation(name)
-        : await provider.updateLocation(locationId, name);
+    final bool success = isEditing
+        ? await provider.updateLocation(
+            locationId,
+            trimmedName,
+          )
+        : await provider.addLocation(
+            trimmedName,
+          );
 
     if (!mounted) {
       return;
@@ -95,13 +72,14 @@ class _LocationManagementScreenState
 
     if (success) {
       _showMessage(
-        locationId == null
-            ? 'เพิ่มสถานที่เรียบร้อยแล้ว'
-            : 'แก้ไขสถานที่เรียบร้อยแล้ว',
+        isEditing
+            ? 'แก้ไขสถานที่เรียบร้อยแล้ว'
+            : 'เพิ่มสถานที่เรียบร้อยแล้ว',
       );
     } else {
       _showMessage(
-        provider.errorMessage ?? 'ไม่สามารถดำเนินการได้',
+        provider.errorMessage ?? 'ไม่สามารถบันทึกสถานที่ได้',
+        isError: true,
       );
     }
   }
@@ -127,7 +105,8 @@ class _LocationManagementScreenState
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
+                backgroundColor:
+                    Theme.of(context).colorScheme.error,
                 foregroundColor:
                     Theme.of(context).colorScheme.onError,
               ),
@@ -146,7 +125,10 @@ class _LocationManagementScreenState
     }
 
     final provider = context.read<LocationProvider>();
-    final success = await provider.deleteLocation(locationId);
+
+    final success = await provider.deleteLocation(
+      locationId,
+    );
 
     if (!mounted) {
       return;
@@ -156,15 +138,23 @@ class _LocationManagementScreenState
       success
           ? 'ลบสถานที่เรียบร้อยแล้ว'
           : provider.errorMessage ?? 'ไม่สามารถลบสถานที่ได้',
+      isError: !success,
     );
   }
 
-  void _showMessage(String message) {
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: isError
+              ? Theme.of(context).colorScheme.error
+              : null,
         ),
       );
   }
@@ -177,7 +167,8 @@ class _LocationManagementScreenState
       ),
       body: Consumer<LocationProvider>(
         builder: (context, provider, child) {
-          if (provider.isLoading && provider.locations.isEmpty) {
+          if (provider.isLoading &&
+              provider.locations.isEmpty) {
             return const Center(
               child: CircularProgressIndicator(),
             );
@@ -195,7 +186,8 @@ class _LocationManagementScreenState
             return RefreshIndicator(
               onRefresh: provider.loadLocations,
               child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 160),
                   _EmptyLocationView(),
@@ -214,16 +206,19 @@ class _LocationManagementScreenState
                 100,
               ),
               itemCount: provider.locations.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              separatorBuilder: (_, _) =>
+                  const SizedBox(height: 8),
               itemBuilder: (context, index) {
-                final location = provider.locations[index];
+                final location =
+                    provider.locations[index];
 
                 return Card(
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer,
+                      backgroundColor:
+                          Theme.of(context)
+                              .colorScheme
+                              .primaryContainer,
                       child: Icon(
                         Icons.location_on_outlined,
                         color: Theme.of(context)
@@ -238,9 +233,11 @@ class _LocationManagementScreenState
                       ),
                     ),
                     subtitle: Text(
-                      'สร้างเมื่อ ${_formatDate(location.createdAt)}',
+                      'สร้างเมื่อ '
+                      '${_formatDate(location.createdAt)}',
                     ),
-                    trailing: PopupMenuButton<String>(
+                    trailing:
+                        PopupMenuButton<String>(
                       tooltip: 'ตัวเลือก',
                       onSelected: (value) {
                         switch (value) {
@@ -260,14 +257,18 @@ class _LocationManagementScreenState
                         PopupMenuItem(
                           value: 'edit',
                           child: ListTile(
-                            leading: Icon(Icons.edit_outlined),
+                            leading: Icon(
+                              Icons.edit_outlined,
+                            ),
                             title: Text('แก้ไข'),
                           ),
                         ),
                         PopupMenuItem(
                           value: 'delete',
                           child: ListTile(
-                            leading: Icon(Icons.delete_outline),
+                            leading: Icon(
+                              Icons.delete_outline,
+                            ),
                             title: Text('ลบ'),
                           ),
                         ),
@@ -280,8 +281,11 @@ class _LocationManagementScreenState
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showLocationDialog(),
+      floatingActionButton:
+          FloatingActionButton.extended(
+        onPressed: () {
+          _showLocationDialog();
+        },
         icon: const Icon(Icons.add),
         label: const Text('เพิ่มสถานที่'),
       ),
@@ -289,11 +293,90 @@ class _LocationManagementScreenState
   }
 
   String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final year = date.year;
+    final localDate = date.toLocal();
 
-    return '$day/$month/$year';
+    return '${localDate.day.toString().padLeft(2, '0')}/'
+        '${localDate.month.toString().padLeft(2, '0')}/'
+        '${localDate.year}';
+  }
+}
+
+class _LocationDialog extends StatefulWidget {
+  const _LocationDialog({
+    required this.title,
+    required this.initialName,
+    required this.onCancel,
+  });
+
+  final String title;
+  final String initialName;
+  final VoidCallback onCancel;
+
+  @override
+  State<_LocationDialog> createState() =>
+      _LocationDialogState();
+}
+
+class _LocationDialogState
+    extends State<_LocationDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = TextEditingController(
+      text: widget.initialName,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(
+      _controller.text.trim(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 50,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(
+          labelText: 'ชื่อสถานที่',
+          hintText: 'เช่น ห้องนอน, ห้องนั่งเล่น',
+          prefixIcon: Icon(
+            Icons.location_on_outlined,
+          ),
+        ),
+        onSubmitted: (_) {
+          _submit();
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: const Text('ยกเลิก'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(
+            widget.title.startsWith('แก้ไข')
+                ? 'บันทึก'
+                : 'เพิ่ม',
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -307,18 +390,25 @@ class _EmptyLocationView extends StatelessWidget {
         Icon(
           Icons.location_off_outlined,
           size: 64,
-          color: Theme.of(context).colorScheme.outline,
+          color: Theme.of(context)
+              .colorScheme
+              .outline,
         ),
         const SizedBox(height: 16),
         Text(
           'ยังไม่มีสถานที่',
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(context)
+              .textTheme
+              .titleLarge,
         ),
         const SizedBox(height: 8),
         Text(
-          'เพิ่มสถานที่ เช่น ห้องนอน ห้องครัว หรือห้องนั่งเล่น',
+          'เพิ่มสถานที่ เช่น ห้องนอน ห้องครัว '
+          'หรือห้องนั่งเล่น',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium,
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium,
         ),
       ],
     );
@@ -345,12 +435,16 @@ class _ErrorView extends StatelessWidget {
             Icon(
               Icons.error_outline,
               size: 56,
-              color: Theme.of(context).colorScheme.error,
+              color: Theme.of(context)
+                  .colorScheme
+                  .error,
             ),
             const SizedBox(height: 16),
             Text(
               'เกิดข้อผิดพลาด',
-              style: Theme.of(context).textTheme.titleLarge,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge,
             ),
             const SizedBox(height: 8),
             Text(

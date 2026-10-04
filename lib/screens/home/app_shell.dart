@@ -15,12 +15,16 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
 
-  static const _screens = <Widget>[
-    HomeScreen(),
-    AssetListScreen(),
-    StatisticsScreen(),
-    SettingsScreen(),
-  ];
+  late final List<Widget> _screens = [
+  HomeScreen(
+    onViewAllAssets: () {
+      _onDestinationSelected(1);
+    },
+  ),
+  const AssetListScreen(),
+  const StatisticsScreen(),
+  const SettingsScreen(),
+];
 
   void _onDestinationSelected(int index) {
     setState(() {

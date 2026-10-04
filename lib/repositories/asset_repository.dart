@@ -29,4 +29,14 @@ class AssetRepository {
   Future<int> deleteAsset(int id) {
     return _dao.deleteAsset(id);
   }
+
+  Future<bool> updateFavorite(
+    int assetId,
+    bool isFavorite,
+  ) {
+    return _dao.updateFavorite(
+      assetId,
+      isFavorite,
+    );
+  }
 }

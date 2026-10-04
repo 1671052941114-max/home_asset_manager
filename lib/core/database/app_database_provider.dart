@@ -8,6 +8,9 @@ import '../../repositories/location_repository.dart';
 import '../../providers/asset_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/location_provider.dart';
+import '../../providers/maintenance_provider.dart';
+import '../../repositories/maintenance_repository.dart';
+import '../../data/database/daos/maintenance_dao.dart';
 
 class AppDatabaseProvider {
   AppDatabaseProvider._(this.database);
@@ -37,6 +40,15 @@ class AppDatabaseProvider {
   late final LocationProvider locationProvider = LocationProvider(
     locationRepository,
   );
+  late final MaintenanceRepository maintenanceRepository =
+    MaintenanceRepository(
+  MaintenanceDao(database),
+);
+
+late final MaintenanceProvider maintenanceProvider =
+    MaintenanceProvider(
+  maintenanceRepository,
+);
 
   static Future<AppDatabaseProvider> create() async {
     final database = await AppDatabase.open();

@@ -8,9 +8,11 @@ import 'package:path_provider/path_provider.dart';
 import 'daos/asset_dao.dart';
 import 'daos/category_dao.dart';
 import 'daos/location_dao.dart';
+import 'daos/maintenance_dao.dart';
 import 'tables/assets.dart';
 import 'tables/categories.dart';
 import 'tables/locations.dart';
+import 'tables/maintenance_records.dart';
 
 part 'app_database.g.dart';
 
@@ -19,11 +21,13 @@ part 'app_database.g.dart';
     Categories,
     Locations,
     Assets,
+    MaintenanceRecords,
   ],
   daos: [
     AssetDao,
     CategoryDao,
     LocationDao,
+    MaintenanceDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -45,7 +49,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -53,10 +57,18 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (Migrator m, int from, int to) async {
-          // Database schema is still under development.
-          //
-          // Future schema changes will be handled here
-          // with explicit migrations.
+          if (from < 3) {
+            await m.addColumn(
+              assets,
+              assets.isFavorite,
+            );
+          }
+
+          if (from < 4) {
+            await m.createTable(
+              maintenanceRecords,
+            );
+          }
         },
       );
 }
