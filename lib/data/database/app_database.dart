@@ -1,10 +1,6 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import 'database_connection.dart';
 import 'daos/asset_dao.dart';
 import 'daos/category_dao.dart';
 import 'daos/location_dao.dart';
@@ -33,19 +29,8 @@ part 'app_database.g.dart';
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
-  static Future<AppDatabase> open() async {
-    final directory = await getApplicationDocumentsDirectory();
-
-    final file = File(
-      p.join(
-        directory.path,
-        'home_asset_manager.sqlite',
-      ),
-    );
-
-    return AppDatabase(
-      NativeDatabase.createInBackground(file),
-    );
+  static Future<AppDatabase> open() {
+    return openDatabase();
   }
 
   @override
